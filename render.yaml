@@ -1,0 +1,62 @@
+# Render Blueprint for beamhazard.
+#
+# Create the service with: Render Dashboard → New → Blueprint → pick this repo.
+# Render needs a Git repository (GitHub / GitLab / Bitbucket), so push this
+# folder there first — a local copy has nothing to connect to.
+#
+# This app must be a Web Service, never a Static Site: it ships API route
+# handlers (app/api/**) and reads the signed session cookie on the server, so
+# there is no `out/` directory to publish.
+services:
+  - type: web
+    name: beamhazard
+    runtime: node
+    plan: free
+    region: oregon # or: ohio | virginia | frankfurt | singapore
+    branch: main
+    autoDeploy: true
+    # The Node version comes from .node-version; package.json has a matching
+    # `engines` range so a stale default can never be used by accident.
+    #
+    # The build command names pnpm on purpose. The repo ships two lockfiles
+    # (package-lock.json + pnpm-lock.yaml), so Render's lockfile-based package
+    # manager detection is ambiguous — pinning the command removes the guess.
+    # Prefer npm? Use `npm ci && npm run build` / `npm start` instead and delete
+    # pnpm-lock.yaml + pnpm-workspace.yaml.
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    # `next start` already binds to $PORT (see next/dist/cli/utils.js), so no
+    # `-p` flag is needed. Never hardcode a port here.
+    startCommand: pnpm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Signs the session cookie. Without it lib/auth.ts falls back to a
+      # well-known development secret, i.e. anyone could forge an admin session.
+      - key: AUTH_SECRET
+        generateValue: true
+      # Set this to the live URL (e.g. https://beamhazard.onrender.com) so the
+      # cookie gets the `Secure` flag because the app really is served over
+      # HTTPS, not merely because NODE_ENV is production.
+      - key: AUTH_URL
+        sync: false
+      # Optional: contact address for the Nominatim usage policy (lib/geocode.ts).
+      # - key: GEOCODER_EMAIL
+      #   sync: false
+
+    # ---------------------------------------------------------------------------
+    # OPTIONAL — keep `.data/accounts.json` and `.data/hazards.json` across deploys.
+    #
+    # Free instances boot with an empty filesystem every deploy/restart, and Free
+    # plans cannot attach a disk at all, so sign-ups and reports are reset. On a
+    # paid instance type, uncomment the disk and the variable below; lib/json-store.ts
+    # then keeps both stores on the volume.
+    #
+    # disk:
+    #   name: beam-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # envVars:
+    #   - key: BEAM_DATA_DIR
+    #     value: /var/data
+    # ---------------------------------------------------------------------------
